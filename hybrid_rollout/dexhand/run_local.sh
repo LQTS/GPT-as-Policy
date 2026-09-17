@@ -15,6 +15,7 @@ RUN_ID="${RUN_ID:-cylinder_a_seed42_smoke}"
 TASK="${TASK:-Isaac-Sharpa-Benchmark-Cylinder-Rotation-A-Axis-v0}"
 SEED="${SEED:-42}"
 MAX_DECISIONS="${MAX_DECISIONS:-3}"
+MAKE_VIDEO="${MAKE_VIDEO:-1}"
 GRASP_BANK="${GRASP_BANK:-$PTRACK_ROOT/outputs/sharpa_dynamic/cylinder_recoverable_grasps_train80_v1.pt}"
 OUTPUT="$RESULTS_ROOT/$RUN_ID/controller"
 
@@ -50,3 +51,7 @@ export PYTHONPATH="$CODE_ROOT:$PTRACK_ROOT:$PTRACK_ROOT/source/ConTrack${PYTHONP
     echo "DexHand rollout exited without result.json: $OUTPUT" >&2
     exit 4
 }
+
+if [[ "$MAKE_VIDEO" == 1 ]]; then
+    "$ISAACLAB_PYTHON" -m hybrid_rollout.dexhand.render_video --controller "$OUTPUT"
+fi

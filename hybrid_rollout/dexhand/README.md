@@ -26,3 +26,6 @@ top-oblique RGB views. Artifacts are written below
 `.runtime/robodojo_mixed_control/results/dexhand/<RUN_ID>/controller/`, including
 the exact Astra settings, prompt hash, RGB/state observations, validated model
 responses, executed target history, token usage, and partial-window rotation metrics.
+By default the launcher also writes `rollout_multiview.mp4`,
+`rollout_multiview_poster.png`, and `object_trajectory.json`. Set
+`MAKE_VIDEO=0` only when video postprocessing is intentionally disabled.
