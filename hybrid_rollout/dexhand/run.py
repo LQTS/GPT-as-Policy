@@ -21,6 +21,7 @@ parser.add_argument("--ptrack-root", type=Path, required=True)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--codex", type=Path, required=True)
 parser.add_argument("--profile", required=True, choices=tuple(PROFILES))
+parser.add_argument("--case-state", type=Path)
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--max-decisions", type=int, default=3)
 parser.add_argument("--preflight-only", action="store_true")
@@ -33,10 +34,13 @@ args = parser.parse_args()
 args.ptrack_root = args.ptrack_root.expanduser().resolve()
 args.output = args.output.expanduser().resolve()
 args.codex = args.codex.expanduser().resolve()
+args.case_state = args.case_state.expanduser().resolve() if args.case_state else None
 profile = get_profile(args.profile)
 args.grasp_bank = profile.grasp_bank(args.ptrack_root)
 args.task = profile.task
-for required in (args.ptrack_root, args.grasp_bank, args.codex):
+for required in (args.ptrack_root, args.grasp_bank, args.codex, args.case_state):
+    if required is None:
+        continue
     if not required.exists():
         parser.error(f"Required path does not exist: {required}")
 if args.max_decisions < 1:
@@ -103,6 +107,8 @@ def make_env():
     cfg.commands.rotation.grasp_bank_path = str(args.grasp_bank)
     cfg.commands.rotation.grasp_bank_probability = profile.grasp_bank_probability
     cfg.commands.rotation.grasp_sampling_mode = profile.grasp_sampling
+    if profile.fixed_world_axis is not None:
+        cfg.commands.rotation.resampling_time_range = (1.0e9, 1.0e9)
     if hasattr(cfg.commands.rotation, "angular_speed"):
         cfg.commands.rotation.angular_speed = profile.target_speed
     elif hasattr(cfg.commands.rotation, "speed_stages"):
@@ -168,6 +174,10 @@ def main() -> None:
             success_tolerance=profile.success_tolerance,
             warmup_steps=profile.warmup_steps,
             provenance=ptrack_provenance(),
+            initial_case=args.case_state,
+            fixed_world_axis=profile.fixed_world_axis,
+            target_speed=profile.target_speed,
+            profile_name=args.profile,
         )
         if args.preflight_only:
             packet = rollout.start()

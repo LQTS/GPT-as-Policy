@@ -22,6 +22,12 @@ from ConTrack.tasks.manager_based.sharpa_in_hand_rotation.mdp.dynamic_target imp
 from hybrid_rollout.robodojo.io import InputError, write_json
 
 from .camera_views import CAMERA_VIEWS
+from .case_state import (
+    apply_case_state,
+    configure_fixed_world_axis,
+    load_case_state,
+    normalized_axis,
+)
 from .protocol import (
     ACTION_DIM,
     accumulate_action,
@@ -54,6 +60,10 @@ class DexHandRollout:
         success_tolerance: float = 0.1,
         warmup_steps: int = 20,
         provenance: dict | None = None,
+        initial_case: Path | None = None,
+        fixed_world_axis: tuple[float, float, float] | None = None,
+        target_speed: float = 1.0,
+        profile_name: str | None = None,
     ) -> None:
         if max_decisions < 1:
             raise ValueError("max_decisions must be positive")
@@ -67,6 +77,25 @@ class DexHandRollout:
         self.seed = seed
         self.max_decisions = max_decisions
         self.provenance = dict(provenance or {})
+        self.initial_case_path = Path(initial_case).resolve() if initial_case else None
+        self.initial_case = (
+            load_case_state(self.initial_case_path) if self.initial_case_path else None
+        )
+        if (
+            self.initial_case is not None
+            and profile_name is not None
+            and self.initial_case["profile"] != profile_name
+        ):
+            raise ValueError(
+                f"Case profile {self.initial_case['profile']!r} does not match {profile_name!r}."
+            )
+        if self.initial_case is not None:
+            fixed_world_axis = self.initial_case["target"]["axis_unit_vector"]
+            target_speed = float(self.initial_case["target"]["speed_rad_s"])
+        self.fixed_world_axis = (
+            normalized_axis(fixed_world_axis) if fixed_world_axis is not None else None
+        )
+        self.target_speed = float(target_speed)
         self.phase = "start"
         self.tick = 0
         self.request = None
@@ -194,6 +223,9 @@ class DexHandRollout:
                 "angular_rad_s": _values(object_angvel_p[0]),
             },
             "target_axis_velocity_palm_rad_s": _values(target_axis_p[0]),
+            "target_axis_velocity_world_rad_s": _values(
+                self.command.target_ang_vel_w[0]
+            ),
             "fingertip_contacts_valid": self.tick > 0,
             "fingertip_contacts": self._contacts(),
             "native_command_metrics_valid": self.tick > 0,
@@ -209,7 +241,15 @@ class DexHandRollout:
         target_context = rotation_target_context(
             state["target_axis_velocity_palm_rad_s"]
         )
-        if hasattr(self.command.cfg, "object_axis"):
+        if self.fixed_world_axis is not None:
+            target_context.update(
+                configured_axis_frame="world",
+                configured_axis_unit_vector=[
+                    round(value, 6) for value in self.fixed_world_axis
+                ],
+                configured_speed_rad_s=self.target_speed,
+            )
+        elif hasattr(self.command.cfg, "object_axis"):
             axis = [float(value) for value in self.command.cfg.object_axis]
             norm = math.sqrt(sum(value * value for value in axis))
             target_context.update(
@@ -269,6 +309,17 @@ class DexHandRollout:
             raise InputError("dexhand_start takes no arguments")
         torch.manual_seed(self.seed)
         self.env.reset(seed=self.seed)
+        if self.initial_case is not None:
+            apply_case_state(
+                self.raw, self.command, self.action_term, self.initial_case
+            )
+        elif self.fixed_world_axis is not None:
+            configure_fixed_world_axis(
+                self.raw,
+                self.command,
+                self.fixed_world_axis,
+                self.target_speed,
+            )
         position = self.raw.scene["hand"].data.joint_pos[:, self.action_term._joint_ids]
         normalized = _normalized_joint_positions(position, self.action_term._joint_limits)
         self.current_action = normalized[0].detach().cpu().tolist()
@@ -287,6 +338,18 @@ class DexHandRollout:
                 "max_episode_steps": self.max_episode_steps,
                 "success_tolerance_rad": self.metrics.success_tolerance,
                 "warmup_steps": self.metrics.warmup_steps,
+                "initial_case": (
+                    {
+                        "path": str(self.initial_case_path),
+                        "case_id": self.initial_case["case_id"],
+                        "source": self.initial_case["source"],
+                        "target": self.initial_case["target"],
+                    }
+                    if self.initial_case is not None
+                    else None
+                ),
+                "fixed_world_axis": self.fixed_world_axis,
+                "target_speed_rad_s": self.target_speed,
                 "ptrack": self.provenance,
                 "camera_views": [dict(view) for view in CAMERA_VIEWS],
                 "observation_modalities": [

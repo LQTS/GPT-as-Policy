@@ -20,6 +20,8 @@ class DexHandTaskProfile:
     wrist_position_range: float
     wrist_rotation_range: float
     purpose: str
+    fixed_world_axis: tuple[float, float, float] | None = None
+    heldout_reference_relative: str | None = None
 
     def grasp_bank(self, ptrack_root: Path) -> Path:
         """Resolve and validate this profile's grasp bank."""
@@ -28,10 +30,23 @@ class DexHandTaskProfile:
             raise FileNotFoundError(f"Profile grasp bank does not exist: {path}")
         return path
 
+    def heldout_reference(self, ptrack_root: Path) -> Path | None:
+        """Resolve the optional held-out bank used to label generated cases."""
+        if self.heldout_reference_relative is None:
+            return None
+        path = (ptrack_root / self.heldout_reference_relative).resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"Profile held-out reference does not exist: {path}")
+        return path
+
     def record(self, ptrack_root: Path) -> dict:
         """Return the resolved profile values stored with an evaluation run."""
         values = asdict(self)
         values["grasp_bank"] = str(self.grasp_bank(ptrack_root))
+        heldout_reference = self.heldout_reference(ptrack_root)
+        values["heldout_reference"] = (
+            str(heldout_reference) if heldout_reference is not None else None
+        )
         return values
 
 
@@ -63,6 +78,39 @@ PROFILES = {
         wrist_position_range=0.005,
         wrist_rotation_range=0.0872665,
         purpose="Held-out continuous-rotation comparison against the selected D3 policy.",
+    ),
+    "cylinder_world_z_cases": DexHandTaskProfile(
+        task="Isaac-Sharpa-In-Hand-Rotation-Cylinder-Dynamic-Motion-v1",
+        grasp_bank_relative=(
+            "outputs/sharpa_dynamic/cylinder_recoverable_grasps_test20_v1.pt"
+        ),
+        grasp_sampling="state",
+        grasp_bank_probability=1.0,
+        target_speed=1.0,
+        success_tolerance=0.1,
+        warmup_steps=20,
+        wrist_position_range=0.0,
+        wrist_rotation_range=0.0,
+        purpose="Persistent held-out initial states with a fixed world-frame +Z target axis.",
+        fixed_world_axis=(0.0, 0.0, 1.0),
+    ),
+    "cuboid_world_z_cases": DexHandTaskProfile(
+        task="Isaac-Sharpa-In-Hand-Rotation-Cuboid-Dynamic-Motion-v1",
+        grasp_bank_relative=(
+            "outputs/sharpa_cuboid_transfer/cuboid_00_stable_grasps_v2.pt"
+        ),
+        grasp_sampling="state",
+        grasp_bank_probability=1.0,
+        target_speed=1.0,
+        success_tolerance=0.1,
+        warmup_steps=20,
+        wrist_position_range=0.0,
+        wrist_rotation_range=0.0,
+        purpose="Persistent cuboid initial states with a fixed world-frame +Z target axis.",
+        fixed_world_axis=(0.0, 0.0, 1.0),
+        heldout_reference_relative=(
+            "outputs/sharpa_cuboid_transfer/cuboid_00_stable_grasps_heldout20_v2.pt"
+        ),
     ),
 }
 

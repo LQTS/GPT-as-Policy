@@ -33,6 +33,17 @@ def test_profile_record_resolves_and_validates_grasp_bank(tmp_path: Path):
 
     assert record["grasp_bank"] == str(bank.resolve())
     assert record["task"] == profile.task
+    assert record["heldout_reference"] is None
+
+
+def test_world_z_profiles_are_fixed_and_nominal():
+    for name in ("cylinder_world_z_cases", "cuboid_world_z_cases"):
+        profile = get_profile(name)
+        assert profile.fixed_world_axis == (0.0, 0.0, 1.0)
+        assert profile.target_speed == 1.0
+        assert profile.grasp_sampling == "state"
+        assert profile.wrist_position_range == 0.0
+        assert profile.wrist_rotation_range == 0.0
 
 
 def test_unknown_profile_is_rejected():
@@ -41,4 +52,9 @@ def test_unknown_profile_is_rejected():
 
 
 def test_profile_names_are_stable():
-    assert tuple(PROFILES) == ("cylinder_a_axis_smoke", "cylinder_d3_heldout")
+    assert tuple(PROFILES) == (
+        "cylinder_a_axis_smoke",
+        "cylinder_d3_heldout",
+        "cylinder_world_z_cases",
+        "cuboid_world_z_cases",
+    )

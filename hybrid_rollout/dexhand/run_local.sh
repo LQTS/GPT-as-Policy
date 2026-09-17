@@ -17,6 +17,7 @@ RUN_ID="${RUN_ID:?Set RUN_ID to a unique result identifier}"
 SEED="${SEED:-42}"
 MAX_DECISIONS="${MAX_DECISIONS:-3}"
 PREFLIGHT_ONLY="${PREFLIGHT_ONLY:-0}"
+CASE_STATE="${CASE_STATE:-}"
 OUTPUT="$RESULTS_ROOT/$RUN_ID/controller"
 
 for path in "$PTRACK_ROOT" "$ISAACLAB_PYTHON" "$CODEX_BIN" "$ISAACSIM_SETUP"; do
@@ -55,6 +56,7 @@ ARGS=(
     --enable_cameras
 )
 [[ "$PREFLIGHT_ONLY" == 1 ]] && ARGS+=(--preflight-only)
+[[ -n "$CASE_STATE" ]] && ARGS+=(--case-state "$CASE_STATE")
 
 "$ISAACLAB_PYTHON" -m hybrid_rollout.dexhand.run "${ARGS[@]}"
 
