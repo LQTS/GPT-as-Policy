@@ -223,6 +223,8 @@ def main() -> None:
                     "maximum_repeat_steps": MAX_REPEAT_STEPS,
                 },
                 "prompt_sha256": worker.prompt_sha256,
+                "prompt_template_sha256": worker.prompt_template_sha256,
+                "prompt_template_workspace_placeholder": "<WORKSPACE>",
             },
         )
         worker.run(rollout)

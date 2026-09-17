@@ -114,6 +114,18 @@ def content_items(packet: dict, *, images: bool, max_image_edge: int) -> list[di
     ]
 
 
+def build_policy_prompt(skill: str, contract: str, workspace: object) -> str:
+    """Build the policy prompt while keeping the workspace-dependent suffix explicit."""
+    return (
+        skill
+        + "\n\n# Action contract\n\n"
+        + contract
+        + "\n\nAgent working directory: "
+        + str(workspace)
+        + "\nResolve context/ and workspace.json relative to that directory.\n"
+    )
+
+
 def prepare_workspace(audit: Path) -> Path:
     """Create the writable policy workspace and install its local rollout skill."""
     audit = audit.resolve()
@@ -193,15 +205,12 @@ class DexHandCodexPolicy:
         self.timeout = timeout
         skill = (SKILL_ROOT / "SKILL.md").read_text()
         contract = (SKILL_ROOT / "references" / "action_contract.md").read_text()
-        self.prompt = (
-            skill
-            + "\n\n# Action contract\n\n"
-            + contract
-            + "\n\nAgent working directory: "
-            + str(self.agent_workspace)
-            + "\nResolve context/ and workspace.json relative to that directory.\n"
-        )
+        self.prompt_template = build_policy_prompt(skill, contract, "<WORKSPACE>")
+        self.prompt = build_policy_prompt(skill, contract, self.agent_workspace)
         self.prompt_sha256 = hashlib.sha256(self.prompt.encode()).hexdigest()
+        self.prompt_template_sha256 = hashlib.sha256(
+            self.prompt_template.encode()
+        ).hexdigest()
         (self.workspace / "SKILL.md").write_text(skill)
         (self.workspace / "PROMPT.md").write_text(self.prompt)
         specs = tool_specs()
@@ -258,6 +267,8 @@ class DexHandCodexPolicy:
                     "thread_id": self.thread_id,
                     "pid": self.transport.process.pid,
                     "prompt_sha256": self.prompt_sha256,
+                    "prompt_template_sha256": self.prompt_template_sha256,
+                    "prompt_template_workspace_placeholder": "<WORKSPACE>",
                     "allow_provider_model_fallback": False,
                     "tools": [spec["name"] for spec in specs],
                     "codex_image_max_edge": self.image_max_edge,
