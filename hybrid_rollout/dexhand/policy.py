@@ -75,6 +75,16 @@ def agent_config(audit: Path, agent: Path) -> dict:
     }
 
 
+def app_server_argv(codex: str, config: dict) -> list[str]:
+    """Build CLI arguments accepted by current strict-config Codex versions."""
+    argv = [codex, "app-server", "--stdio", "--strict-config"]
+    for key, value in config.items():
+        if key == "features.view_image":
+            continue
+        argv += ["-c", key + "=" + toml_value(value)]
+    return argv
+
+
 def content_items(packet: dict, *, images: bool, max_image_edge: int) -> list[dict]:
     """Attach RGB previews without changing the recorded full-resolution image."""
     visible_packet = packet
@@ -190,9 +200,7 @@ class DexHandCodexPolicy:
             [codex, "--version"], capture_output=True, text=True, check=True
         ).stdout.strip()
         config = agent_config(self.workspace, self.agent_workspace)
-        argv = [codex, "app-server", "--stdio", "--strict-config"]
-        for key, value in config.items():
-            argv += ["-c", key + "=" + toml_value(value)]
+        argv = app_server_argv(codex, config)
         write_json(self.workspace / "launch.json", {"argv": argv, "config": config})
         self.transport = transport_factory(argv, self.workspace)
         try:
