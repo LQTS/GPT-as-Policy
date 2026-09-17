@@ -30,7 +30,7 @@ from .protocol import tool_specs
 
 
 SKILL_ROOT = Path(__file__).parent / "dexhand-astra-rollout"
-CONTROLLER_VERSION = "dexhand_direct_profile_v2"
+CONTROLLER_VERSION = "dexhand_direct_profile_v3"
 NATIVE_WORK_ITEMS = frozenset(
     (
         "commandExecution",
@@ -305,7 +305,8 @@ class DexHandCodexPolicy:
     def run(self, rollout) -> None:
         turn_id = self._turn(
             "Act as the autonomous policy for this single Sharpa simulation rollout. "
-            "Use the rollout tools plus normal file/image/calculation tools as useful. "
+            "Use rollout tools and calculations as useful. RGB pixels are attached to "
+            "successful rollout results; do not reopen host image paths. "
             "The user authorizes sending this episode's RGB views, named joint state, object/target "
             "pose, contacts, and same-episode history to OpenAI Codex. First call: "
             + json.dumps(rollout.next_call())

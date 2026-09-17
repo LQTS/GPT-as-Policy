@@ -11,7 +11,9 @@ Use `dexhand_start` once, then use `dexhand_act` until the returned packet says
 substitute an RL policy.
 
 Read `context/action_contract.md` before the first action. Compare the supplied RGB views
-to resolve occlusion and verify the grasp from more than one side. Use the supplied
+to resolve occlusion and verify the grasp from more than one side. The RGB pixels are
+already attached to each successful rollout result; do not call `view_image` on host
+paths. Use the supplied
 named joint state, object/target poses, contact flags, and same-episode history. On
 step 0, contact flags and native command metrics can be uninitialized when their
 corresponding validity fields are false; do not tighten the grasp solely because
