@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 from pathlib import Path
 import signal
+import subprocess
 import sys
 import traceback
 
@@ -24,6 +26,10 @@ parser.add_argument("--codex", type=Path, required=True)
 parser.add_argument("--task", default=DEFAULT_TASK)
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--max-decisions", type=int, default=3)
+parser.add_argument("--target-speed", type=float, default=0.5)
+parser.add_argument("--success-tolerance", type=float, default=0.1)
+parser.add_argument("--warmup-steps", type=int, default=20)
+parser.add_argument("--preflight-only", action="store_true")
 parser.add_argument("--controller-timeout", type=int, default=900)
 parser.add_argument("--camera-width", type=int, default=640)
 parser.add_argument("--camera-height", type=int, default=480)
@@ -39,6 +45,12 @@ for required in (args.ptrack_root, args.grasp_bank, args.codex):
         parser.error(f"Required path does not exist: {required}")
 if args.max_decisions < 1:
     parser.error("--max-decisions must be positive")
+if not math.isfinite(args.target_speed) or args.target_speed <= 0.0:
+    parser.error("--target-speed must be positive and finite")
+if not math.isfinite(args.success_tolerance) or args.success_tolerance <= 0.0:
+    parser.error("--success-tolerance must be positive and finite")
+if args.warmup_steps < 0:
+    parser.error("--warmup-steps must be non-negative")
 if args.output.exists():
     parser.error(f"Output already exists: {args.output}")
 
@@ -67,6 +79,30 @@ from hybrid_rollout.robodojo.io import write_json  # noqa: E402
 from hybrid_rollout.robodojo.settings import EFFORT, MODEL  # noqa: E402
 
 
+def ptrack_provenance() -> dict:
+    commit = subprocess.run(
+        ["git", "-C", str(args.ptrack_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    dirty = bool(
+        subprocess.run(
+            ["git", "-C", str(args.ptrack_root), "status", "--porcelain"],
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+    )
+    return {
+        "root": str(args.ptrack_root),
+        "commit": commit,
+        "dirty": dirty,
+        "grasp_bank": str(args.grasp_bank),
+        "target_speed_rad_s": args.target_speed,
+    }
+
+
 def make_env():
     cfg = load_cfg_from_registry(args.task, "env_cfg_entry_point")
     cfg.seed = args.seed
@@ -77,6 +113,15 @@ def make_env():
     cfg.commands.rotation.grasp_bank_path = str(args.grasp_bank)
     cfg.commands.rotation.grasp_bank_probability = 1.0
     cfg.commands.rotation.grasp_sampling_mode = "state"
+    if hasattr(cfg.commands.rotation, "angular_speed"):
+        cfg.commands.rotation.angular_speed = args.target_speed
+    elif hasattr(cfg.commands.rotation, "speed_stages"):
+        cfg.commands.rotation.speed_stages = (args.target_speed,)
+        cfg.commands.rotation.min_speed_ratio = 1.0
+    else:
+        raise ValueError(
+            "DexHand Astra direct control requires a continuous rotation task"
+        )
     for view in CAMERA_VIEWS:
         eye = np.asarray(view["eye"], dtype=np.float32)
         target = np.asarray(view["target"], dtype=np.float32)
@@ -120,7 +165,22 @@ def main() -> None:
             task=args.task,
             seed=args.seed,
             max_decisions=args.max_decisions,
+            success_tolerance=args.success_tolerance,
+            warmup_steps=args.warmup_steps,
+            provenance=ptrack_provenance(),
         )
+        if args.preflight_only:
+            packet = rollout.start()
+            rollout.act(
+                {
+                    "request_id": packet["request_id"],
+                    "joint_delta": [0.0] * rollout.action_term.action_dim,
+                    "repeat_steps": 1,
+                    "reason": "Exercise one no-op transition for simulator preflight.",
+                }
+            )
+            rollout.finish("preflight")
+            return
         worker = DexHandCodexPolicy(
             args.output / "codex_workspace",
             str(args.codex),

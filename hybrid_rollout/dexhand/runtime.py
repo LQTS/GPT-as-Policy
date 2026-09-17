@@ -12,10 +12,22 @@ from PIL import Image
 import torch
 import isaaclab.utils.math as math_utils
 
+from ConTrack.tasks.manager_based.sharpa_in_hand_rotation.evaluation import (
+    DynamicRotationEvalAccumulator,
+    quaternion_geodesic_error,
+)
+from ConTrack.tasks.manager_based.sharpa_in_hand_rotation.mdp.dynamic_target import (
+    signed_dominant_axis_bins,
+)
 from hybrid_rollout.robodojo.io import InputError, write_json
 
 from .camera_views import CAMERA_VIEWS
-from .protocol import ACTION_DIM, accumulate_action, validate_action
+from .protocol import (
+    ACTION_DIM,
+    accumulate_action,
+    rotation_target_context,
+    validate_action,
+)
 
 
 def _values(tensor: torch.Tensor, digits: int = 6) -> list[float]:
@@ -31,7 +43,18 @@ def _normalized_joint_positions(position: torch.Tensor, limits: torch.Tensor) ->
 class DexHandRollout:
     """Expose a bounded decision loop around an already-created Isaac Lab environment."""
 
-    def __init__(self, env, output: Path, *, task: str, seed: int, max_decisions: int) -> None:
+    def __init__(
+        self,
+        env,
+        output: Path,
+        *,
+        task: str,
+        seed: int,
+        max_decisions: int,
+        success_tolerance: float = 0.1,
+        warmup_steps: int = 20,
+        provenance: dict | None = None,
+    ) -> None:
         if max_decisions < 1:
             raise ValueError("max_decisions must be positive")
         self.env = env
@@ -43,6 +66,7 @@ class DexHandRollout:
         self.task = task
         self.seed = seed
         self.max_decisions = max_decisions
+        self.provenance = dict(provenance or {})
         self.phase = "start"
         self.tick = 0
         self.request = None
@@ -64,10 +88,18 @@ class DexHandRollout:
         self.reverse_angle = 0.0
         self.perpendicular_angle = 0.0
         self.terminated = False
+        self.timed_out = False
         self.dropped = False
         self.non_finite = False
         self.step_dt = float(self.raw.step_dt)
         self.max_episode_steps = int(round(self.raw.max_episode_length))
+        self.metrics = DynamicRotationEvalAccumulator(
+            num_envs=1,
+            device=self.raw.device,
+            step_dt=self.step_dt,
+            success_tolerance=success_tolerance,
+            warmup_steps=warmup_steps,
+        )
 
     def next_call(self) -> dict | None:
         if self.phase == "start":
@@ -174,6 +206,16 @@ class DexHandRollout:
         directory.mkdir()
         images = self._render(directory)
         state = self._state()
+        target_context = rotation_target_context(
+            state["target_axis_velocity_palm_rad_s"]
+        )
+        if hasattr(self.command.cfg, "object_axis"):
+            axis = [float(value) for value in self.command.cfg.object_axis]
+            norm = math.sqrt(sum(value * value for value in axis))
+            target_context.update(
+                configured_axis_frame="initialized_object",
+                configured_axis_unit_vector=[round(value / norm, 6) for value in axis],
+            )
         np.savez_compressed(
             directory / "state.npz",
             joint_position=np.asarray(state["joint_position_rad"], dtype=np.float32),
@@ -191,12 +233,10 @@ class DexHandRollout:
             "task": self.task,
             "task_context": {
                 "objective": (
-                    "Continuously rotate the held object in the positive commanded object-local "
-                    "axis direction while preserving the grasp and limiting perpendicular rotation."
+                    "Track the continuously moving target orientation while preserving the grasp. "
+                    "The current target angular velocity is expressed in the palm frame."
                 ),
-                "object_local_axis": list(self.command.cfg.object_axis),
-                "positive_direction": "right-hand rule",
-                "target_angular_speed_rad_s": float(self.command.cfg.angular_speed),
+                "rotation_target": target_context,
                 "episode_horizon_steps": self.max_episode_steps,
             },
             "seed": self.seed,
@@ -245,6 +285,9 @@ class DexHandRollout:
                 "max_decisions": self.max_decisions,
                 "control_dt_s": self.step_dt,
                 "max_episode_steps": self.max_episode_steps,
+                "success_tolerance_rad": self.metrics.success_tolerance,
+                "warmup_steps": self.metrics.warmup_steps,
+                "ptrack": self.provenance,
                 "camera_views": [dict(view) for view in CAMERA_VIEWS],
                 "observation_modalities": [
                     "front_rgb",
@@ -260,7 +303,10 @@ class DexHandRollout:
 
     def _measure_step(self, angular_velocity_w: torch.Tensor, target_axis_w: torch.Tensor) -> None:
         axis = target_axis_w[0]
-        axis = axis / torch.linalg.vector_norm(axis)
+        norm = torch.linalg.vector_norm(axis)
+        if float(norm.item()) <= 0.0:
+            return
+        axis = axis / norm
         velocity = angular_velocity_w[0]
         parallel = float(torch.dot(velocity, axis).item())
         perpendicular = float(torch.linalg.vector_norm(velocity - parallel * axis).item())
@@ -281,22 +327,43 @@ class DexHandRollout:
         for _ in range(action["repeat_steps"]):
             angular_velocity = self.raw.scene["object"].data.root_ang_vel_w.clone()
             target_axis = self.command.target_ang_vel_w.clone()
+            rot_dist = quaternion_geodesic_error(
+                self.raw.scene["object"].data.root_quat_w,
+                self.command.target_quat_w,
+            )
+            target_speed = torch.linalg.vector_norm(
+                self.command.target_ang_vel_p, dim=-1
+            )
+            axis_bin, moving_target = signed_dominant_axis_bins(
+                self.command.target_ang_vel_p
+            )
             tensor = torch.tensor(
                 [self.current_action], dtype=torch.float32, device=self.raw.device
             )
-            self.env.step(tensor)
+            _, _, terminated, truncated, _ = self.env.step(tensor)
             self._measure_step(angular_velocity, target_axis)
             self.tick += 1
             executed_steps += 1
-            terminated = bool(self.raw.reset_terminated[0].item())
-            if terminated:
-                self.terminated = True
-                self.dropped = bool(
-                    self.raw.termination_manager.get_term("object_dropped")[0].item()
-                )
-                self.non_finite = bool(
-                    self.raw.termination_manager.get_term("non_finite")[0].item()
-                )
+            terminated_now = bool(terminated[0].item())
+            truncated_now = bool(truncated[0].item())
+            object_dropped = self.raw.termination_manager.get_term(
+                "object_dropped"
+            ).clone()
+            non_finite = self.raw.termination_manager.get_term("non_finite").clone()
+            self.metrics.step(
+                rot_dist,
+                target_speed,
+                axis_bin,
+                moving_target,
+                terminated,
+                object_dropped=object_dropped,
+                non_finite=non_finite,
+            )
+            if terminated_now or truncated_now:
+                self.terminated = terminated_now
+                self.timed_out = truncated_now
+                self.dropped = bool(object_dropped[0].item())
+                self.non_finite = bool(non_finite[0].item())
                 break
         self.history.append(
             {
@@ -310,13 +377,20 @@ class DexHandRollout:
                 "executed_steps": executed_steps,
                 "end_step": self.tick,
                 "terminated": self.terminated,
+                "timed_out": self.timed_out,
             }
         )
         write_json(self.output / "history.json", self.history)
         exhausted = len(self.history) >= self.max_decisions
         result = None
-        if self.terminated or exhausted:
-            result = self.finish("native_termination" if self.terminated else "decision_budget")
+        if self.terminated or self.timed_out or exhausted:
+            if self.terminated:
+                reason = "native_termination"
+            elif self.timed_out:
+                reason = "native_timeout"
+            else:
+                reason = "decision_budget"
+            result = self.finish(reason)
         return self._packet(result=result)
 
     def finish(self, reason: str) -> dict:
@@ -324,21 +398,25 @@ class DexHandRollout:
             return self.result
         total_axis = self.positive_angle + self.reverse_angle
         denominator = total_axis + self.perpendicular_angle
+        dynamic_metrics = self.metrics.finalize()
         self.result = {
             "schema": "dexhand_astra.result.v1",
             "reason": reason,
             "complete": True,
             "partial_horizon": self.tick < self.max_episode_steps,
+            "native_episode_complete": self.terminated or self.timed_out,
             "steps": self.tick,
             "decisions": len(self.history),
             "survived_window": not self.terminated,
             "dropped": self.dropped,
             "non_finite": self.non_finite,
+            "timed_out": self.timed_out,
             "signed_rotation_rad": self.signed_angle,
             "signed_turns": self.signed_angle / (2.0 * math.pi),
             "reverse_rotation_fraction": self.reverse_angle / total_axis if total_axis else 0.0,
             "perpendicular_rotation_rad": self.perpendicular_angle,
             "axis_purity": total_axis / denominator if denominator else 0.0,
+            "dynamic_rotation_metrics": dynamic_metrics,
             "artifacts": {
                 "run": str(self.output / "run.json"),
                 "history": str(self.output / "history.json"),

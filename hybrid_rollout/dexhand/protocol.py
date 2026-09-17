@@ -127,11 +127,31 @@ def accumulate_action(current: list[float], delta: list[float]) -> tuple[list[fl
     return target, clipped
 
 
+def rotation_target_context(angular_velocity: list[float]) -> dict:
+    """Describe one non-zero palm-frame angular-velocity command."""
+    if not isinstance(angular_velocity, list) or len(angular_velocity) != 3:
+        raise ValueError("angular_velocity must contain exactly three values")
+    values = [float(value) for value in angular_velocity]
+    if not all(math.isfinite(value) for value in values):
+        raise ValueError("angular_velocity must be finite")
+    speed = math.sqrt(sum(value * value for value in values))
+    if speed <= 0.0:
+        raise ValueError("angular_velocity must be non-zero")
+    return {
+        "axis_frame": "palm",
+        "axis_unit_vector": [round(value / speed, 6) for value in values],
+        "angular_velocity_rad_s": [round(value, 6) for value in values],
+        "angular_speed_rad_s": round(speed, 6),
+        "positive_direction": "right-hand rule",
+    }
+
+
 __all__ = [
     "ACTION_DIM",
     "MAX_JOINT_DELTA",
     "MAX_REPEAT_STEPS",
     "accumulate_action",
+    "rotation_target_context",
     "response_schema",
     "tool_specs",
     "validate_action",
