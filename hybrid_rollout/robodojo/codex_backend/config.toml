@@ -16,7 +16,6 @@ wire_api = "responses"
 
 [features]
 fast_mode = false
-codex_hooks = true
 hooks = true
 # Other capabilities retain Codex defaults. Backend isolation is not a tool
 # allowlist; plugins/connectors still need their own installation/authentication.

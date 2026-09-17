@@ -42,7 +42,7 @@ def validate_config(path: Path, profile_name=None) -> dict:
             or config.get('forced_login_method') != 'chatgpt'):
         raise ValueError('Managed accounts require built-in OpenAI provider and isolated file auth')
     features = config.get('features', {})
-    expected_features = {'codex_hooks': True, 'hooks': True, 'fast_mode': False}
+    expected_features = {'hooks': True, 'fast_mode': False}
     if any(features.get(key) is not value for key, value in expected_features.items()):
         raise ValueError('Rollout Codex feature isolation differs from the pinned configuration')
     if config.get('service_tier') not in (None, 'default'):

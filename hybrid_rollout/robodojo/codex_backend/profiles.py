@@ -78,7 +78,7 @@ def config_text(name=None):
     if p['auth_mode'] == 'api':
         text += (f'\n[model_providers.{p["provider"]}]\nname = "{p["provider"]}"\n'
                  f'base_url = "{p["base_url"]}"\nenv_key = "OPENAI_API_KEY"\nwire_api = "responses"\n')
-    return text + '\n[features]\nfast_mode = false\ncodex_hooks = true\nhooks = true\n'
+    return text + '\n[features]\nfast_mode = false\nhooks = true\n'
 
 
 def private_dir(path):
