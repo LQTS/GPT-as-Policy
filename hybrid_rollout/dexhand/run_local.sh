@@ -15,6 +15,8 @@ RUN_ID="${RUN_ID:-cylinder_a_seed42_smoke}"
 TASK="${TASK:-Isaac-Sharpa-Benchmark-Cylinder-Rotation-A-Axis-v0}"
 SEED="${SEED:-42}"
 MAX_DECISIONS="${MAX_DECISIONS:-3}"
+HORIZON_STEPS="${HORIZON_STEPS:-0}"
+FIXED_REPEAT_STEPS="${FIXED_REPEAT_STEPS:-0}"
 MAKE_VIDEO="${MAKE_VIDEO:-1}"
 GRASP_BANK="${GRASP_BANK:-$PTRACK_ROOT/outputs/sharpa_dynamic/cylinder_recoverable_grasps_train80_v1.pt}"
 OUTPUT="$RESULTS_ROOT/$RUN_ID/controller"
@@ -43,6 +45,8 @@ export PYTHONPATH="$CODE_ROOT:$PTRACK_ROOT:$PTRACK_ROOT/source/ConTrack${PYTHONP
     --task "$TASK" \
     --seed "$SEED" \
     --max-decisions "$MAX_DECISIONS" \
+    --horizon-steps "$HORIZON_STEPS" \
+    --fixed-repeat-steps "$FIXED_REPEAT_STEPS" \
     --device cuda:0 \
     --headless \
     --enable_cameras

@@ -22,8 +22,17 @@ def _object(properties: dict) -> dict:
     }
 
 
-def response_schema() -> dict:
+def _repeat_bounds(fixed_repeat_steps: int | None) -> tuple[int, int]:
+    if fixed_repeat_steps is None:
+        return 1, MAX_REPEAT_STEPS
+    if not 1 <= fixed_repeat_steps <= MAX_REPEAT_STEPS:
+        raise ValueError(f"fixed_repeat_steps must be in [1, {MAX_REPEAT_STEPS}]")
+    return fixed_repeat_steps, fixed_repeat_steps
+
+
+def response_schema(fixed_repeat_steps: int | None = None) -> dict:
     """Return the dynamic-tool schema exposed to the policy agent."""
+    repeat_minimum, repeat_maximum = _repeat_bounds(fixed_repeat_steps)
     return _object(
         {
             "request_id": {"type": "string"},
@@ -39,16 +48,21 @@ def response_schema() -> dict:
             },
             "repeat_steps": {
                 "type": "integer",
-                "minimum": 1,
-                "maximum": MAX_REPEAT_STEPS,
+                "minimum": repeat_minimum,
+                "maximum": repeat_maximum,
             },
             "reason": {"type": "string"},
         }
     )
 
 
-def tool_specs() -> list[dict]:
+def tool_specs(fixed_repeat_steps: int | None = None) -> list[dict]:
     """Return the two additive app-server tools for one DexHand rollout."""
+    cadence = (
+        f"exactly {fixed_repeat_steps} control steps"
+        if fixed_repeat_steps is not None
+        else "1-10 control steps"
+    )
     return [
         {
             "type": "function",
@@ -60,15 +74,17 @@ def tool_specs() -> list[dict]:
             "type": "function",
             "name": "dexhand_act",
             "description": (
-                "Execute one bounded 22-joint delta for 1-10 control steps, then return "
+                f"Execute one bounded 22-joint delta for {cadence}, then return "
                 "a fresh RGB/state observation and native metrics."
             ),
-            "inputSchema": _object({"response": response_schema()}),
+            "inputSchema": _object({"response": response_schema(fixed_repeat_steps)}),
         },
     ]
 
 
-def validate_action(response: object, request_id: str) -> dict:
+def validate_action(
+    response: object, request_id: str, fixed_repeat_steps: int | None = None
+) -> dict:
     """Validate a model-authored action before any simulator step occurs."""
     if not isinstance(response, dict):
         raise InputError("response must be an object")
@@ -87,7 +103,10 @@ def validate_action(response: object, request_id: str) -> dict:
     repeat_steps = response["repeat_steps"]
     if isinstance(repeat_steps, bool) or not isinstance(repeat_steps, int):
         raise InputError("repeat_steps must be an integer")
-    if not 1 <= repeat_steps <= MAX_REPEAT_STEPS:
+    repeat_minimum, repeat_maximum = _repeat_bounds(fixed_repeat_steps)
+    if not repeat_minimum <= repeat_steps <= repeat_maximum:
+        if fixed_repeat_steps is not None:
+            raise InputError(f"repeat_steps must equal {fixed_repeat_steps} for this rollout")
         raise InputError(f"repeat_steps must be in [1, {MAX_REPEAT_STEPS}]")
     delta = response["joint_delta"]
     if not isinstance(delta, list) or len(delta) != ACTION_DIM:

@@ -30,7 +30,7 @@ from .protocol import tool_specs
 
 
 SKILL_ROOT = Path(__file__).parent / "dexhand-astra-rollout"
-CONTROLLER_VERSION = "dexhand_direct_smoke_v1"
+CONTROLLER_VERSION = "dexhand_direct_v2"
 NATIVE_WORK_ITEMS = frozenset(
     (
         "commandExecution",
@@ -162,6 +162,7 @@ class DexHandCodexPolicy:
         codex: str,
         *,
         timeout: int = 900,
+        fixed_repeat_steps: int | None = None,
         transport_factory=StdioAppServer,
     ) -> None:
         self.image_max_edge = image_max_edge(
@@ -171,12 +172,21 @@ class DexHandCodexPolicy:
         self.workspace.mkdir(parents=True, exist_ok=False)
         self.agent_workspace = prepare_workspace(self.workspace)
         self.timeout = timeout
+        self.fixed_repeat_steps = fixed_repeat_steps
         skill = (SKILL_ROOT / "SKILL.md").read_text()
         contract = (SKILL_ROOT / "references" / "action_contract.md").read_text()
+        cadence = (
+            "\n\n# Fixed control cadence\n\n"
+            f"For this episode, every dexhand_act response must set repeat_steps to exactly "
+            f"{fixed_repeat_steps}. This host-enforced cadence overrides the general 1-10 range.\n"
+            if fixed_repeat_steps is not None
+            else ""
+        )
         self.prompt = (
             skill
             + "\n\n# Action contract\n\n"
             + contract
+            + cadence
             + "\n\nAgent working directory: "
             + str(self.agent_workspace)
             + "\nResolve context/ and workspace.json relative to that directory.\n"
@@ -184,7 +194,7 @@ class DexHandCodexPolicy:
         self.prompt_sha256 = hashlib.sha256(self.prompt.encode()).hexdigest()
         (self.workspace / "SKILL.md").write_text(skill)
         (self.workspace / "PROMPT.md").write_text(self.prompt)
-        specs = tool_specs()
+        specs = tool_specs(fixed_repeat_steps)
         write_json(self.workspace / "tools.json", specs)
         version = subprocess.run(
             [codex, "--version"], capture_output=True, text=True, check=True
@@ -243,6 +253,7 @@ class DexHandCodexPolicy:
                     "allow_provider_model_fallback": False,
                     "tools": [spec["name"] for spec in specs],
                     "codex_image_max_edge": self.image_max_edge,
+                    "fixed_repeat_steps": fixed_repeat_steps,
                     "policy_images_resized": False,
                 },
             )

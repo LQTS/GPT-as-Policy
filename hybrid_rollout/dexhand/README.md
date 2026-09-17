@@ -10,6 +10,14 @@ The default smoke is `Cylinder-Rotation-A-Axis`, seed 42, one environment, and
 three model decisions. It is deliberately a partial-horizon integration check,
 not a benchmark score.
 
+A host-managed 400-step run uses a fixed 10-step action cadence so the physical
+horizon is exact and Isaac Lab cannot auto-reset the terminal observation:
+
+```bash
+RUN_ID=cylinder_a_seed42_full400 MAX_DECISIONS=40 HORIZON_STEPS=400 \
+FIXED_REPEAT_STEPS=10 hybrid_rollout/dexhand/run_local.sh
+```
+
 From the GPT-as-Policy repository root:
 
 ```bash

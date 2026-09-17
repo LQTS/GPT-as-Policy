@@ -52,6 +52,18 @@ def test_dynamic_tools_expose_only_start_and_bounded_act():
     assert delta["minItems"] == delta["maxItems"] == ACTION_DIM
 
 
+def test_fixed_repeat_schema_and_validation():
+    specs = tool_specs(fixed_repeat_steps=10)
+    repeat = specs[1]["inputSchema"]["properties"]["response"]["properties"]["repeat_steps"]
+    assert repeat["minimum"] == repeat["maximum"] == 10
+    response = valid_response()
+    response["repeat_steps"] = 10
+    assert validate_action(response, "request", fixed_repeat_steps=10)["repeat_steps"] == 10
+    response["repeat_steps"] = 9
+    with pytest.raises(InputError, match="must equal 10"):
+        validate_action(response, "request", fixed_repeat_steps=10)
+
+
 def test_policy_inherits_pinned_project_model_without_rpc_dependency():
     from .policy import EFFORT, MODEL, agent_config
 

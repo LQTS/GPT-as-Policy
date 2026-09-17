@@ -31,9 +31,29 @@ def _normalized_joint_positions(position: torch.Tensor, limits: torch.Tensor) ->
 class DexHandRollout:
     """Expose a bounded decision loop around an already-created Isaac Lab environment."""
 
-    def __init__(self, env, output: Path, *, task: str, seed: int, max_decisions: int) -> None:
+    def __init__(
+        self,
+        env,
+        output: Path,
+        *,
+        task: str,
+        seed: int,
+        max_decisions: int,
+        horizon_steps: int | None = None,
+        fixed_repeat_steps: int | None = None,
+    ) -> None:
         if max_decisions < 1:
             raise ValueError("max_decisions must be positive")
+        if horizon_steps is not None and horizon_steps < 1:
+            raise ValueError("horizon_steps must be positive")
+        if fixed_repeat_steps is not None and not 1 <= fixed_repeat_steps <= 10:
+            raise ValueError("fixed_repeat_steps must be in [1, 10]")
+        if (
+            horizon_steps is not None
+            and fixed_repeat_steps is not None
+            and max_decisions * fixed_repeat_steps < horizon_steps
+        ):
+            raise ValueError("decision budget cannot reach the requested horizon")
         self.env = env
         self.raw = env.unwrapped
         if self.raw.num_envs != 1:
@@ -43,6 +63,7 @@ class DexHandRollout:
         self.task = task
         self.seed = seed
         self.max_decisions = max_decisions
+        self.fixed_repeat_steps = fixed_repeat_steps
         self.phase = "start"
         self.tick = 0
         self.request = None
@@ -67,7 +88,9 @@ class DexHandRollout:
         self.dropped = False
         self.non_finite = False
         self.step_dt = float(self.raw.step_dt)
-        self.max_episode_steps = int(round(self.raw.max_episode_length))
+        self.environment_episode_steps = int(round(self.raw.max_episode_length))
+        self.max_episode_steps = horizon_steps or int(round(self.raw.max_episode_length))
+        self.host_managed_horizon = horizon_steps is not None
 
     def next_call(self) -> dict | None:
         if self.phase == "start":
@@ -207,7 +230,8 @@ class DexHandRollout:
             "control_dt_s": self.step_dt,
             "state": state,
             "images": images,
-            "history": self.history,
+            "history": self.history[-3:],
+            "history_total_decisions": len(self.history),
             "rollout_finished": result is not None,
             "result": result,
         }
@@ -243,8 +267,12 @@ class DexHandRollout:
                 "action_dim": ACTION_DIM,
                 "action_space": "normalized_joint_target_delta",
                 "max_decisions": self.max_decisions,
+                "fixed_repeat_steps": self.fixed_repeat_steps,
                 "control_dt_s": self.step_dt,
                 "max_episode_steps": self.max_episode_steps,
+                "environment_episode_steps": self.environment_episode_steps,
+                "host_managed_horizon": self.host_managed_horizon,
+                "history_window_size": 3,
                 "camera_views": [dict(view) for view in CAMERA_VIEWS],
                 "observation_modalities": [
                     "front_rgb",
@@ -272,7 +300,9 @@ class DexHandRollout:
 
     def act(self, response: object) -> dict:
         self._require_phase("act")
-        action = validate_action(response, self.request["request_id"])
+        action = validate_action(
+            response, self.request["request_id"], self.fixed_repeat_steps
+        )
         decision = len(self.history)
         target, clipped = accumulate_action(self.current_action, action["joint_delta"])
         self.current_action = target
@@ -298,6 +328,8 @@ class DexHandRollout:
                     self.raw.termination_manager.get_term("non_finite")[0].item()
                 )
                 break
+            if self.tick >= self.max_episode_steps:
+                break
         self.history.append(
             {
                 "decision": decision,
@@ -314,9 +346,17 @@ class DexHandRollout:
         )
         write_json(self.output / "history.json", self.history)
         exhausted = len(self.history) >= self.max_decisions
+        horizon_reached = self.tick >= self.max_episode_steps
         result = None
-        if self.terminated or exhausted:
-            result = self.finish("native_termination" if self.terminated else "decision_budget")
+        if self.terminated or horizon_reached or exhausted:
+            reason = (
+                "native_termination"
+                if self.terminated
+                else "horizon_reached"
+                if horizon_reached
+                else "decision_budget"
+            )
+            result = self.finish(reason)
         return self._packet(result=result)
 
     def finish(self, reason: str) -> dict:
@@ -335,9 +375,13 @@ class DexHandRollout:
             "dropped": self.dropped,
             "non_finite": self.non_finite,
             "signed_rotation_rad": self.signed_angle,
+            "signed_rotation_deg": math.degrees(self.signed_angle),
             "signed_turns": self.signed_angle / (2.0 * math.pi),
+            "positive_rotation_deg": math.degrees(self.positive_angle),
+            "reverse_rotation_deg": math.degrees(self.reverse_angle),
             "reverse_rotation_fraction": self.reverse_angle / total_axis if total_axis else 0.0,
             "perpendicular_rotation_rad": self.perpendicular_angle,
+            "perpendicular_rotation_deg": math.degrees(self.perpendicular_angle),
             "axis_purity": total_axis / denominator if denominator else 0.0,
             "artifacts": {
                 "run": str(self.output / "run.json"),

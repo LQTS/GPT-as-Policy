@@ -24,6 +24,8 @@ parser.add_argument("--codex", type=Path, required=True)
 parser.add_argument("--task", default=DEFAULT_TASK)
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--max-decisions", type=int, default=3)
+parser.add_argument("--horizon-steps", type=int, default=0)
+parser.add_argument("--fixed-repeat-steps", type=int, default=0)
 parser.add_argument("--controller-timeout", type=int, default=900)
 parser.add_argument("--camera-width", type=int, default=640)
 parser.add_argument("--camera-height", type=int, default=480)
@@ -39,6 +41,14 @@ for required in (args.ptrack_root, args.grasp_bank, args.codex):
         parser.error(f"Required path does not exist: {required}")
 if args.max_decisions < 1:
     parser.error("--max-decisions must be positive")
+if args.horizon_steps < 0:
+    parser.error("--horizon-steps cannot be negative")
+if not 0 <= args.fixed_repeat_steps <= 10:
+    parser.error("--fixed-repeat-steps must be 0 or in [1, 10]")
+if args.horizon_steps and not args.fixed_repeat_steps:
+    parser.error("--horizon-steps requires --fixed-repeat-steps")
+if args.horizon_steps and args.max_decisions * args.fixed_repeat_steps < args.horizon_steps:
+    parser.error("decision budget cannot reach --horizon-steps")
 if args.output.exists():
     parser.error(f"Output already exists: {args.output}")
 
@@ -77,6 +87,10 @@ def make_env():
     cfg.commands.rotation.grasp_bank_path = str(args.grasp_bank)
     cfg.commands.rotation.grasp_bank_probability = 1.0
     cfg.commands.rotation.grasp_sampling_mode = "state"
+    if args.horizon_steps:
+        cfg.episode_length_s = (
+            (args.horizon_steps + args.fixed_repeat_steps) * cfg.sim.dt * cfg.decimation
+        )
     for view in CAMERA_VIEWS:
         eye = np.asarray(view["eye"], dtype=np.float32)
         target = np.asarray(view["target"], dtype=np.float32)
@@ -120,11 +134,14 @@ def main() -> None:
             task=args.task,
             seed=args.seed,
             max_decisions=args.max_decisions,
+            horizon_steps=args.horizon_steps or None,
+            fixed_repeat_steps=args.fixed_repeat_steps or None,
         )
         worker = DexHandCodexPolicy(
             args.output / "codex_workspace",
             str(args.codex),
             timeout=args.controller_timeout,
+            fixed_repeat_steps=args.fixed_repeat_steps or None,
         )
         write_json(
             args.output / "astra_settings.json",
