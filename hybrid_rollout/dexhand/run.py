@@ -184,7 +184,7 @@ def main() -> None:
             initial_case=args.case_state,
             fixed_world_axis=profile.fixed_world_axis,
             target_speed=profile.target_speed,
-            profile_name=args.profile,
+            profile_name=profile.case_source_profile or args.profile,
         )
         if args.preflight_only:
             packet = rollout.start()

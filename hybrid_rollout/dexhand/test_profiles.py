@@ -46,6 +46,17 @@ def test_world_z_profiles_are_fixed_and_nominal():
         assert profile.wrist_rotation_range == 0.0
 
 
+def test_cuboid_slow_profile_is_fixed_at_point_two_rad_per_second():
+    profile = get_profile("cuboid_world_z_0p2_cases")
+    assert profile.fixed_world_axis == (0.0, 0.0, 1.0)
+    assert profile.target_speed == 0.2
+    assert profile.task == "Isaac-Sharpa-In-Hand-Rotation-Cuboid-Dynamic-Motion-v1"
+    assert profile.grasp_sampling == "state"
+    assert profile.case_source_profile == "cuboid_world_z_cases"
+    assert profile.wrist_position_range == 0.0
+    assert profile.wrist_rotation_range == 0.0
+
+
 def test_unknown_profile_is_rejected():
     with pytest.raises(ValueError, match="Unknown DexHand profile"):
         get_profile("implicit-default")
@@ -58,4 +69,5 @@ def test_profile_names_are_stable():
         "cylinder_world_z_dev",
         "cylinder_world_z_cases",
         "cuboid_world_z_cases",
+        "cuboid_world_z_0p2_cases",
     )

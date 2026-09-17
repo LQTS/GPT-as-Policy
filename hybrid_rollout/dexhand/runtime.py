@@ -112,7 +112,6 @@ class DexHandRollout:
             )
         if self.initial_case is not None:
             fixed_world_axis = self.initial_case["target"]["axis_unit_vector"]
-            target_speed = float(self.initial_case["target"]["speed_rad_s"])
         self.fixed_world_axis = (
             normalized_axis(fixed_world_axis) if fixed_world_axis is not None else None
         )

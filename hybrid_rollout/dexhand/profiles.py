@@ -22,6 +22,7 @@ class DexHandTaskProfile:
     purpose: str
     fixed_world_axis: tuple[float, float, float] | None = None
     heldout_reference_relative: str | None = None
+    case_source_profile: str | None = None
 
     def grasp_bank(self, ptrack_root: Path) -> Path:
         """Resolve and validate this profile's grasp bank."""
@@ -123,6 +124,25 @@ PROFILES = {
         wrist_rotation_range=0.0,
         purpose="Persistent cuboid initial states with a fixed world-frame +Z target axis.",
         fixed_world_axis=(0.0, 0.0, 1.0),
+        heldout_reference_relative=(
+            "outputs/sharpa_cuboid_transfer/cuboid_00_stable_grasps_heldout20_v2.pt"
+        ),
+    ),
+    "cuboid_world_z_0p2_cases": DexHandTaskProfile(
+        task="Isaac-Sharpa-In-Hand-Rotation-Cuboid-Dynamic-Motion-v1",
+        grasp_bank_relative=(
+            "outputs/sharpa_cuboid_transfer/cuboid_00_stable_grasps_v2.pt"
+        ),
+        grasp_sampling="state",
+        grasp_bank_probability=1.0,
+        target_speed=0.2,
+        success_tolerance=0.1,
+        warmup_steps=20,
+        wrist_position_range=0.0,
+        wrist_rotation_range=0.0,
+        purpose="Persistent cuboid initial states with a fixed world-frame +Z target axis at 0.2 rad/s.",
+        fixed_world_axis=(0.0, 0.0, 1.0),
+        case_source_profile="cuboid_world_z_cases",
         heldout_reference_relative=(
             "outputs/sharpa_cuboid_transfer/cuboid_00_stable_grasps_heldout20_v2.pt"
         ),

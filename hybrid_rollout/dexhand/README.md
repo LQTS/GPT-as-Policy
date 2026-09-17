@@ -14,6 +14,7 @@ Every run must select an explicit profile. There is no implicit A-axis task:
 | `cylinder_d3_heldout` | Held-out continuous-rotation comparison against the selected D3 RL policy. |
 | `cylinder_world_z_cases` | Persistent cylinder cases rotating about world +Z at 1.0 rad/s. |
 | `cuboid_world_z_cases` | Persistent cuboid cases rotating about world +Z at 1.0 rad/s. |
+| `cuboid_world_z_0p2_cases` | Persistent cuboid cases rotating about world +Z at 0.2 rad/s. |
 
 `cylinder_d3_heldout` fixes the task, held-out grasp bank, group grasp sampling,
 1.0 rad/s target speed, 0.005 m wrist-position range, 0.0872665 rad wrist-rotation
