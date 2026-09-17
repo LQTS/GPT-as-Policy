@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import datetime, timezone
 import hashlib
 import json
 import os
@@ -41,6 +42,15 @@ NATIVE_WORK_ITEMS = frozenset(
         "collabAgentToolCall",
     )
 )
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _append_jsonl(path: Path, value: dict) -> None:
+    with path.open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(value, ensure_ascii=False) + "\n")
 
 
 def toml_value(value: object) -> str:
@@ -303,6 +313,7 @@ class DexHandCodexPolicy:
         )
 
     def run(self, rollout) -> None:
+        turn_started_at = time.monotonic()
         turn_id = self._turn(
             "Act as the autonomous policy for this single Sharpa simulation rollout. "
             "Use rollout tools and calculations as useful. RGB pixels are attached to "
@@ -312,6 +323,7 @@ class DexHandCodexPolicy:
             + json.dumps(rollout.next_call())
         )
         call_index = 0
+        last_reply_at = turn_started_at
         continuations = 0
         network_error = None
         network_consecutive = 0
@@ -344,16 +356,18 @@ class DexHandCodexPolicy:
             params = event.get("params", {})
             if method == "thread/tokenUsage/updated" and params.get("threadId") == self.thread_id:
                 usage = params.get("tokenUsage", {})
-                write_json(
-                    self.workspace.parent / "token_usage.json",
-                    {
-                        "model": MODEL,
-                        "effort": EFFORT,
-                        "provider": PROVIDER,
-                        "usage": usage,
-                        "configured_limit": token_limit,
-                    },
-                )
+                usage_record = {
+                    "timestamp_utc": _utc_now(),
+                    "call_index": call_index,
+                    "step_id": rollout.tick,
+                    "model": MODEL,
+                    "effort": EFFORT,
+                    "provider": PROVIDER,
+                    "usage": usage,
+                    "configured_limit": token_limit,
+                }
+                write_json(self.workspace.parent / "token_usage.json", usage_record)
+                _append_jsonl(self.workspace.parent / "token_usage.jsonl", usage_record)
                 if token_limit and usage.get("total", {}).get("totalTokens", 0) >= token_limit:
                     raise RuntimeError("Configured total-token budget reached")
             elif method == "item/tool/call":
@@ -361,6 +375,9 @@ class DexHandCodexPolicy:
                     raise RuntimeError("Tool call belongs to another thread or turn")
                 name = params["tool"]
                 arguments = params["arguments"]
+                received_at = time.monotonic()
+                received_utc = _utc_now()
+                step_before = rollout.tick
                 write_json(
                     self.workspace / f"call_{call_index:04d}_request.json",
                     {"call_id": params["callId"], "tool": name, "arguments": arguments},
@@ -396,6 +413,22 @@ class DexHandCodexPolicy:
                         ),
                     },
                 )
+                replied_at = time.monotonic()
+                _append_jsonl(
+                    self.workspace.parent / "decision_timing.jsonl",
+                    {
+                        "call_index": call_index,
+                        "tool": name,
+                        "request_received_utc": received_utc,
+                        "reply_sent_utc": _utc_now(),
+                        "model_wait_s": received_at - last_reply_at,
+                        "host_execution_s": replied_at - received_at,
+                        "success": success,
+                        "step_before": step_before,
+                        "step_after": rollout.tick,
+                    },
+                )
+                last_reply_at = replied_at
                 call_index += 1
                 deadline = time.monotonic() + self.timeout
             elif method in ("item/started", "item/completed"):

@@ -40,7 +40,7 @@ def test_valid_action_and_saturation_report():
         lambda value: value["joint_delta"].__setitem__(0, 0.1001),
         lambda value: value["joint_delta"].__setitem__(0, math.nan),
         lambda value: value.update(repeat_steps=True),
-        lambda value: value.update(repeat_steps=11),
+        lambda value: value.update(repeat_steps=6),
         lambda value: value.update(extra="not allowed"),
     ],
 )

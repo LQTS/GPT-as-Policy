@@ -77,8 +77,8 @@ RUN_ID=cylinder_a_seed42_smoke_01 \
 Set `CODEX_BIN` to a current shared CLI when a compute node's system Codex is
 too old for GPT-6 Astra. Override `PTRACK_ROOT`, `ISAACLAB_PYTHON`, or
 `ROLLOUT_SHARED_ROOT` only when using another validated installation. A longer
-episode requires an explicitly reviewed `MAX_DECISIONS` budget; the default
-remains three.
+episode requires an explicitly reviewed `MAX_DECISIONS` budget; the formal default
+is 100 decisions; use a smaller explicit value only for a smoke run.
 
 Each observation includes synchronized front-oblique, opposite-oblique, and
 top-oblique RGB views, named proprioception, object/target state, and the current

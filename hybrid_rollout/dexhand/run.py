@@ -23,7 +23,7 @@ parser.add_argument("--codex", type=Path, required=True)
 parser.add_argument("--profile", required=True, choices=tuple(PROFILES))
 parser.add_argument("--case-state", type=Path)
 parser.add_argument("--seed", type=int, default=42)
-parser.add_argument("--max-decisions", type=int, default=3)
+parser.add_argument("--max-decisions", type=int, default=100)
 parser.add_argument("--preflight-only", action="store_true")
 parser.add_argument("--controller-timeout", type=int, default=900)
 parser.add_argument("--camera-width", type=int, default=640)
@@ -68,9 +68,16 @@ from scripts.tools.sharpa_camera import camera_quat_opengl_wxyz  # noqa: E402
 
 from .camera_views import CAMERA_VIEWS  # noqa: E402
 from .policy import CONTROLLER_VERSION, DexHandCodexPolicy  # noqa: E402
+from .protocol import ACTION_DIM, MAX_JOINT_DELTA, MAX_REPEAT_STEPS  # noqa: E402
 from .runtime import DexHandRollout  # noqa: E402
 from hybrid_rollout.robodojo.io import write_json  # noqa: E402
-from hybrid_rollout.robodojo.settings import EFFORT, MODEL  # noqa: E402
+from hybrid_rollout.robodojo.settings import (  # noqa: E402
+    DEFAULT_CODEX_IMAGE_MAX_EDGE,
+    EFFORT,
+    MODEL,
+    PROVIDER,
+    WIRE_API,
+)
 
 
 def ptrack_provenance() -> dict:
@@ -202,7 +209,19 @@ def main() -> None:
                 "source": "hybrid_rollout.robodojo.settings",
                 "model": MODEL,
                 "reasoning_effort": EFFORT,
+                "provider": PROVIDER,
+                "wire_api": WIRE_API,
                 "provider_fallback": False,
+                "temperature_configured": False,
+                "controller_timeout_s": args.controller_timeout,
+                "max_decisions": args.max_decisions,
+                "policy_image_max_edge": worker.image_max_edge,
+                "default_policy_image_max_edge": DEFAULT_CODEX_IMAGE_MAX_EDGE,
+                "action_contract": {
+                    "dimension": ACTION_DIM,
+                    "maximum_joint_delta": MAX_JOINT_DELTA,
+                    "maximum_repeat_steps": MAX_REPEAT_STEPS,
+                },
                 "prompt_sha256": worker.prompt_sha256,
             },
         )

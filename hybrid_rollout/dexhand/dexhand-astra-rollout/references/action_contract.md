@@ -19,7 +19,7 @@ Call `dexhand_act` with:
 }
 ```
 
-`repeat_steps` is an integer from 1 through 10. One control step is 0.05 seconds.
+`repeat_steps` is an integer from 1 through 5. One control step is 0.05 seconds.
 The host validates the entire response before stepping physics; rejected input
 executes nothing. Executed actions are never rolled back or silently replayed.
 

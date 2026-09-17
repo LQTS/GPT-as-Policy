@@ -10,7 +10,7 @@ from hybrid_rollout.robodojo.robodojo_server.validation import validate_public_l
 
 ACTION_DIM = 22
 MAX_JOINT_DELTA = 0.1
-MAX_REPEAT_STEPS = 10
+MAX_REPEAT_STEPS = 5
 
 
 def _object(properties: dict) -> dict:
@@ -60,7 +60,7 @@ def tool_specs() -> list[dict]:
             "type": "function",
             "name": "dexhand_act",
             "description": (
-                "Execute one bounded 22-joint delta for 1-10 control steps, then return "
+                "Execute one bounded 22-joint delta for 1-5 control steps, then return "
                 "a fresh RGB/state observation and native metrics."
             ),
             "inputSchema": _object({"response": response_schema()}),

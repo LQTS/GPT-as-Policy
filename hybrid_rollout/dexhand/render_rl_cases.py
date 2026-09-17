@@ -27,6 +27,7 @@ parser.add_argument("--session", type=Path, required=True)
 parser.add_argument("--checkpoint", type=Path, required=True)
 parser.add_argument("--case-state", type=Path, nargs="+", required=True)
 parser.add_argument("--output-name", default="rl_d3_world_z")
+parser.add_argument("--target-speed", type=float)
 parser.add_argument("--video-length", type=int, default=600)
 parser.add_argument("--intro-frames", type=int, default=15)
 parser.add_argument("--outro-frames", type=int, default=15)
@@ -47,6 +48,9 @@ args.grasp_bank = profile.grasp_bank(args.ptrack_root)
 args.task = profile.task
 if profile.fixed_world_axis is None:
     parser.error("RL case rendering requires a fixed-world-axis profile.")
+args.target_speed = profile.target_speed if args.target_speed is None else args.target_speed
+if args.target_speed <= 0.0:
+    parser.error("--target-speed must be positive.")
 if args.video_length < 1 or args.intro_frames < 0 or args.outro_frames < 0:
     parser.error("Video length must be positive and hold-frame counts must be non-negative.")
 for required in (args.ptrack_root, args.session, args.checkpoint, args.grasp_bank, *args.case_state):
@@ -88,7 +92,11 @@ from ConTrack.tasks.manager_based.sharpa_in_hand_rotation.mdp.dynamic_target imp
 )
 
 from hybrid_rollout.dexhand.camera_views import CAMERA_VIEWS  # noqa: E402
-from hybrid_rollout.dexhand.case_state import apply_case_state, load_case_state  # noqa: E402
+from hybrid_rollout.dexhand.case_state import (  # noqa: E402
+    apply_case_state,
+    configure_fixed_world_axis,
+    load_case_state,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -221,7 +229,10 @@ def _camera_frame(camera, *, case_id: str, step: int, rot_error: float) -> np.nd
     )
     draw.text(
         (10, 34),
-        "Lower RGB: OBJECT frame | Upper RGB: REFERENCE frame | target: WORLD +Z @ 1.0 rad/s",
+        (
+            "Lower RGB: OBJECT frame | Upper RGB: REFERENCE frame | "
+            f"target: WORLD +Z @ {args.target_speed:g} rad/s"
+        ),
         font=_font(14),
         fill=(245, 245, 245),
     )
@@ -264,7 +275,7 @@ def _configure_env(env_cfg, agent_cfg: dict) -> None:
     env_cfg.commands.rotation.grasp_bank_probability = 1.0
     env_cfg.commands.rotation.grasp_sampling_mode = "state"
     env_cfg.commands.rotation.resampling_time_range = (1.0e9, 1.0e9)
-    env_cfg.commands.rotation.speed_stages = (profile.target_speed,)
+    env_cfg.commands.rotation.speed_stages = (args.target_speed,)
     env_cfg.commands.rotation.min_speed_ratio = 1.0
     env_cfg.commands.rotation.success_tolerance = profile.success_tolerance
     env_cfg.events.reset_hand_root.params["pose_range"] = {
@@ -345,7 +356,7 @@ def main(env_cfg, agent_cfg: RslRlBaseRunnerCfg) -> None:
     marker_indices = torch.arange(6, device=raw.device)
     expected_velocity = torch.tensor(
         profile.fixed_world_axis, dtype=torch.float32, device=raw.device
-    ) * profile.target_speed
+    ) * args.target_speed
     _use_fixed_world_velocity(command, expected_velocity)
     checkpoint_sha256 = _sha256(args.checkpoint)
     fps = 1.0 / float(raw.step_dt)
@@ -396,6 +407,12 @@ def main(env_cfg, agent_cfg: RslRlBaseRunnerCfg) -> None:
 
         env.reset()
         apply_case_state(raw, command, action_term, case)
+        configure_fixed_world_axis(
+            raw,
+            command,
+            profile.fixed_world_axis,
+            args.target_speed,
+        )
         raw.episode_length_buf.zero_()
         runner.alg.policy.reset(
             torch.ones(raw.num_envs, dtype=torch.bool, device=raw.device)
@@ -508,9 +525,9 @@ def main(env_cfg, agent_cfg: RslRlBaseRunnerCfg) -> None:
         for previous, current in zip(object_quats, object_quats[1:]):
             delta = math_utils.quat_mul(current, math_utils.quat_conjugate(previous))
             rotation = math_utils.axis_angle_from_quat(delta)
-            parallel = float(torch.dot(rotation, expected_velocity).item()) / profile.target_speed
+            parallel = float(torch.dot(rotation, expected_velocity).item()) / args.target_speed
             perpendicular = torch.linalg.vector_norm(
-                rotation - parallel * expected_velocity / profile.target_speed
+                rotation - parallel * expected_velocity / args.target_speed
             )
             pose_signed += parallel
             pose_absolute += abs(parallel)
@@ -545,7 +562,7 @@ def main(env_cfg, agent_cfg: RslRlBaseRunnerCfg) -> None:
             "target": {
                 "axis_frame": "world",
                 "axis_unit_vector": list(profile.fixed_world_axis),
-                "speed_rad_s": profile.target_speed,
+                "speed_rad_s": args.target_speed,
             },
             "video": {
                 "path": str(video_path),

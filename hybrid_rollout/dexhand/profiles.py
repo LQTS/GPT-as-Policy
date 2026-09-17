@@ -79,6 +79,21 @@ PROFILES = {
         wrist_rotation_range=0.0872665,
         purpose="Held-out continuous-rotation comparison against the selected D3 policy.",
     ),
+    "cylinder_world_z_dev": DexHandTaskProfile(
+        task="Isaac-Sharpa-In-Hand-Rotation-Cylinder-Dynamic-Motion-v1",
+        grasp_bank_relative=(
+            "outputs/sharpa_dynamic/cylinder_recoverable_grasps_train80_v1.pt"
+        ),
+        grasp_sampling="state",
+        grasp_bank_probability=1.0,
+        target_speed=1.0,
+        success_tolerance=0.1,
+        warmup_steps=20,
+        wrist_position_range=0.0,
+        wrist_rotation_range=0.0,
+        purpose="Non-held-out fixed-world +Z case for Astra integration development.",
+        fixed_world_axis=(0.0, 0.0, 1.0),
+    ),
     "cylinder_world_z_cases": DexHandTaskProfile(
         task="Isaac-Sharpa-In-Hand-Rotation-Cylinder-Dynamic-Motion-v1",
         grasp_bank_relative=(
