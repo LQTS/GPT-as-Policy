@@ -298,7 +298,7 @@ class DexHandCodexPolicy:
         turn_id = self._turn(
             "Act as the autonomous policy for this single Sharpa simulation rollout. "
             "Use the rollout tools plus normal file/image/calculation tools as useful. "
-            "The user authorizes sending this episode's RGB, named joint state, object/target "
+            "The user authorizes sending this episode's RGB views, named joint state, object/target "
             "pose, contacts, and same-episode history to OpenAI Codex. First call: "
             + json.dumps(rollout.next_call())
         )

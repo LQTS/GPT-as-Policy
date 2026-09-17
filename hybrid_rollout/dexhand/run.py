@@ -60,6 +60,7 @@ import isaaclab_tasks  # noqa: F401,E402
 import ConTrack.tasks  # noqa: F401,E402
 from scripts.tools.sharpa_camera import camera_quat_opengl_wxyz  # noqa: E402
 
+from .camera_views import CAMERA_VIEWS  # noqa: E402
 from .policy import CONTROLLER_VERSION, DexHandCodexPolicy  # noqa: E402
 from .runtime import DexHandRollout  # noqa: E402
 from hybrid_rollout.robodojo.io import write_json  # noqa: E402
@@ -76,26 +77,28 @@ def make_env():
     cfg.commands.rotation.grasp_bank_path = str(args.grasp_bank)
     cfg.commands.rotation.grasp_bank_probability = 1.0
     cfg.commands.rotation.grasp_sampling_mode = "state"
-    eye = np.asarray((0.38, -0.64, 0.83), dtype=np.float32)
-    target = np.asarray((-0.05, -0.155, 0.56), dtype=np.float32)
-    cfg.scene.render_camera = CameraCfg(
-        prim_path="{ENV_REGEX_NS}/RenderCamera",
-        offset=CameraCfg.OffsetCfg(
-            pos=tuple(float(value) for value in eye),
-            rot=camera_quat_opengl_wxyz(eye, target),
-            convention="opengl",
-        ),
-        data_types=["rgb"],
-        update_latest_camera_pose=True,
-        spawn=sim_utils.PinholeCameraCfg(
-            focal_length=34.0,
-            focus_distance=2.0,
-            horizontal_aperture=24.0,
-            clipping_range=(0.01, 20.0),
-        ),
-        width=args.camera_width,
-        height=args.camera_height,
-    )
+    for view in CAMERA_VIEWS:
+        eye = np.asarray(view["eye"], dtype=np.float32)
+        target = np.asarray(view["target"], dtype=np.float32)
+        camera = CameraCfg(
+            prim_path=f"{{ENV_REGEX_NS}}/{view['prim_name']}",
+            offset=CameraCfg.OffsetCfg(
+                pos=tuple(float(value) for value in eye),
+                rot=camera_quat_opengl_wxyz(eye, target),
+                convention="opengl",
+            ),
+            data_types=["rgb"],
+            update_latest_camera_pose=True,
+            spawn=sim_utils.PinholeCameraCfg(
+                focal_length=34.0,
+                focus_distance=2.0,
+                horizontal_aperture=24.0,
+                clipping_range=(0.01, 20.0),
+            ),
+            width=args.camera_width,
+            height=args.camera_height,
+        )
+        setattr(cfg.scene, view["scene_key"], camera)
     return gym.make(args.task, cfg=cfg)
 
 

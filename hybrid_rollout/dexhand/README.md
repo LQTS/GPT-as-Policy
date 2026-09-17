@@ -21,7 +21,8 @@ profile manager. Override `ROLLOUT_SHARED_ROOT`, `ROLLOUT_AUTH_PROFILE`,
 `ROLLOUT_CODEX_HOME_DIR`, `PTRACK_ROOT`, `ISAACLAB_PYTHON`, or `CODEX_BIN` only
 when using an equivalently validated local installation.
 
-Artifacts are written below
+Each observation includes synchronized front-oblique, opposite-oblique, and
+top-oblique RGB views. Artifacts are written below
 `.runtime/robodojo_mixed_control/results/dexhand/<RUN_ID>/controller/`, including
 the exact Astra settings, prompt hash, RGB/state observations, validated model
 responses, executed target history, token usage, and partial-window rotation metrics.

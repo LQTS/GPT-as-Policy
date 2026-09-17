@@ -10,7 +10,8 @@ Use `dexhand_start` once, then use `dexhand_act` until the returned packet says
 `rollout_finished=true`. Do not launch another simulator, reset the episode, or
 substitute an RL policy.
 
-Read `context/action_contract.md` before the first action. Use the supplied RGB,
+Read `context/action_contract.md` before the first action. Compare the supplied RGB views
+to resolve occlusion and verify the grasp from more than one side. Use the supplied
 named joint state, object/target poses, contact flags, and same-episode history.
 The episode packet defines the commanded object-local axis and positive direction;
 do not infer direction from the camera alone.

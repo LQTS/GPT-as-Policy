@@ -5,6 +5,7 @@ import pytest
 
 from hybrid_rollout.robodojo.io import InputError
 
+from .camera_views import CAMERA_VIEWS
 from .protocol import ACTION_DIM, accumulate_action, tool_specs, validate_action
 
 
@@ -58,3 +59,14 @@ def test_policy_inherits_pinned_project_model_without_rpc_dependency():
     config = agent_config(Path("/tmp/audit"), Path("/tmp/agent"))
     assert config["model"] == MODEL
     assert config["model_reasoning_effort"] == EFFORT
+
+
+def test_camera_rig_has_three_distinct_complementary_views():
+    assert [view["name"] for view in CAMERA_VIEWS] == [
+        "front",
+        "opposite",
+        "top",
+    ]
+    assert len({view["scene_key"] for view in CAMERA_VIEWS}) == len(CAMERA_VIEWS)
+    assert len({view["prim_name"] for view in CAMERA_VIEWS}) == len(CAMERA_VIEWS)
+    assert all(view["eye"] != view["target"] for view in CAMERA_VIEWS)

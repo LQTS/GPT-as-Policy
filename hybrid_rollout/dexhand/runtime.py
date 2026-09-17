@@ -14,6 +14,7 @@ import isaaclab.utils.math as math_utils
 
 from hybrid_rollout.robodojo.io import InputError, write_json
 
+from .camera_views import CAMERA_VIEWS
 from .protocol import ACTION_DIM, accumulate_action, validate_action
 
 
@@ -54,7 +55,9 @@ class DexHandRollout:
             )
         self.joint_names = list(self.action_term._joint_names)
         self.command = self.raw.command_manager.get_term("rotation")
-        self.camera = self.raw.scene["render_camera"]
+        self.cameras = [
+            (view["name"], self.raw.scene[view["scene_key"]]) for view in CAMERA_VIEWS
+        ]
         self.current_action = [0.0] * ACTION_DIM
         self.signed_angle = 0.0
         self.positive_angle = 0.0
@@ -81,23 +84,28 @@ class DexHandRollout:
         if self.phase != expected:
             raise InputError(f"Expected phase {expected}, current phase is {self.phase}")
 
-    def _render(self, directory: Path) -> dict:
+    def _render(self, directory: Path) -> list[dict]:
         self.raw.sim.render()
-        self.camera.update(dt=self.step_dt)
-        rgb = self.camera.data.output["rgb"][0]
-        if rgb.shape[-1] > 3:
-            rgb = rgb[..., :3]
-        if rgb.dtype != torch.uint8:
-            rgb = rgb.to(torch.float32)
-            if float(rgb.max().item()) <= 2.0:
-                rgb = rgb * 255.0
-            rgb = rgb.clamp(0.0, 255.0).to(torch.uint8)
-        array = rgb.detach().cpu().numpy()
-        path = directory / "front_rgb.png"
-        Image.fromarray(array).save(path)
-        if array.size == 0 or float(array.std()) < 1.0:
-            raise RuntimeError("Rendered DexHand RGB frame is empty or nearly uniform")
-        return {"name": "front", "path": str(path), "size": [array.shape[1], array.shape[0]]}
+        images = []
+        for name, camera in self.cameras:
+            camera.update(dt=self.step_dt)
+            rgb = camera.data.output["rgb"][0]
+            if rgb.shape[-1] > 3:
+                rgb = rgb[..., :3]
+            if rgb.dtype != torch.uint8:
+                rgb = rgb.to(torch.float32)
+                if float(rgb.max().item()) <= 2.0:
+                    rgb = rgb * 255.0
+                rgb = rgb.clamp(0.0, 255.0).to(torch.uint8)
+            array = rgb.detach().cpu().numpy()
+            path = directory / f"{name}_rgb.png"
+            Image.fromarray(array).save(path)
+            if array.size == 0 or float(array.std()) < 1.0:
+                raise RuntimeError(f"Rendered DexHand RGB frame {name!r} is empty or nearly uniform")
+            images.append(
+                {"name": name, "path": str(path), "size": [array.shape[1], array.shape[0]]}
+            )
+        return images
 
     def _contacts(self) -> dict[str, bool]:
         contacts = {}
@@ -164,7 +172,7 @@ class DexHandRollout:
         index = len(self.history)
         directory = self.output / "observations" / f"{index:03d}"
         directory.mkdir()
-        image = self._render(directory)
+        images = self._render(directory)
         state = self._state()
         np.savez_compressed(
             directory / "state.npz",
@@ -198,7 +206,7 @@ class DexHandRollout:
             "max_decisions": self.max_decisions,
             "control_dt_s": self.step_dt,
             "state": state,
-            "images": [image],
+            "images": images,
             "history": self.history,
             "rollout_finished": result is not None,
             "result": result,
@@ -212,7 +220,7 @@ class DexHandRollout:
                 "observation_path": str(observation_path),
             }
             packet.update(self.request)
-            write_json(self.output / f"request_{index:03d}.json", {**packet, "images": [image]})
+            write_json(self.output / f"request_{index:03d}.json", packet)
         return packet
 
     def start(self, **arguments) -> dict:
@@ -237,7 +245,14 @@ class DexHandRollout:
                 "max_decisions": self.max_decisions,
                 "control_dt_s": self.step_dt,
                 "max_episode_steps": self.max_episode_steps,
-                "observation_modalities": ["front_rgb", "named_proprio", "object_target_state"],
+                "camera_views": [dict(view) for view in CAMERA_VIEWS],
+                "observation_modalities": [
+                    "front_rgb",
+                    "opposite_rgb",
+                    "top_rgb",
+                    "named_proprio",
+                    "object_target_state",
+                ],
             },
         )
         write_json(self.output / "history.json", self.history)
