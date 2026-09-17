@@ -471,10 +471,10 @@ def main(env_cfg, agent_cfg: RslRlBaseRunnerCfg) -> None:
                 writer.append(frame)
                 last_frame = frame
 
-                with torch.inference_mode():
+                with torch.no_grad():
                     action = policy(obs)
-                    obs, reward, dones, extras = env.step(action)
-                    runner.alg.policy.reset(dones)
+                obs, reward, dones, extras = env.step(action)
+                runner.alg.policy.reset(dones)
                 actions.append(action[0].detach().cpu().numpy().copy())
                 rewards.append(float(reward[0].item()))
                 if bool(dones[0].item()):
