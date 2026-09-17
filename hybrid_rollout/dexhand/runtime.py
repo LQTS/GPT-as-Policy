@@ -60,7 +60,7 @@ class DexHandRollout:
         self.env = env
         self.raw = env.unwrapped
         if self.raw.num_envs != 1:
-            raise ValueError("Astra direct smoke requires exactly one environment")
+            raise ValueError("Astra direct evaluation requires exactly one environment")
         self.output = Path(output)
         (self.output / "observations").mkdir()
         self.task = task
@@ -171,9 +171,7 @@ class DexHandRollout:
         object_angvel_p = math_utils.quat_apply_inverse(
             palm_quat, obj.data.root_ang_vel_w
         )
-        target_axis_p = math_utils.quat_apply_inverse(
-            palm_quat, self.command.target_ang_vel_w
-        )
+        target_axis_p = self.command.target_ang_vel_p
         metrics = {
             key: round(float(value[0].item()), 6)
             for key, value in self.command.metrics.items()
@@ -196,7 +194,9 @@ class DexHandRollout:
                 "angular_rad_s": _values(object_angvel_p[0]),
             },
             "target_axis_velocity_palm_rad_s": _values(target_axis_p[0]),
+            "fingertip_contacts_valid": self.tick > 0,
             "fingertip_contacts": self._contacts(),
+            "native_command_metrics_valid": self.tick > 0,
             "native_command_metrics": metrics,
         }
 
@@ -326,7 +326,9 @@ class DexHandRollout:
         executed_steps = 0
         for _ in range(action["repeat_steps"]):
             angular_velocity = self.raw.scene["object"].data.root_ang_vel_w.clone()
-            target_axis = self.command.target_ang_vel_w.clone()
+            target_axis = math_utils.quat_apply(
+                self.command._palm_pose_w()[1], self.command.target_ang_vel_p
+            )
             rot_dist = quaternion_geodesic_error(
                 self.raw.scene["object"].data.root_quat_w,
                 self.command.target_quat_w,

@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Run one GPT-6 Astra direct-control smoke episode in PTrack Sharpa."""
+"""Run one GPT-6 Astra direct-control evaluation window in PTrack Sharpa."""
 
 from __future__ import annotations
 
 import argparse
-import math
 import os
 from pathlib import Path
 import signal
@@ -14,21 +13,16 @@ import traceback
 
 from isaaclab.app import AppLauncher
 
-
-DEFAULT_TASK = "Isaac-Sharpa-Benchmark-Cylinder-Rotation-A-Axis-v0"
+from .profiles import PROFILES, get_profile
 
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--ptrack-root", type=Path, required=True)
-parser.add_argument("--grasp-bank", type=Path, required=True)
 parser.add_argument("--output", type=Path, required=True)
 parser.add_argument("--codex", type=Path, required=True)
-parser.add_argument("--task", default=DEFAULT_TASK)
+parser.add_argument("--profile", required=True, choices=tuple(PROFILES))
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--max-decisions", type=int, default=3)
-parser.add_argument("--target-speed", type=float, default=0.5)
-parser.add_argument("--success-tolerance", type=float, default=0.1)
-parser.add_argument("--warmup-steps", type=int, default=20)
 parser.add_argument("--preflight-only", action="store_true")
 parser.add_argument("--controller-timeout", type=int, default=900)
 parser.add_argument("--camera-width", type=int, default=640)
@@ -37,20 +31,16 @@ AppLauncher.add_app_launcher_args(parser)
 args = parser.parse_args()
 
 args.ptrack_root = args.ptrack_root.expanduser().resolve()
-args.grasp_bank = args.grasp_bank.expanduser().resolve()
 args.output = args.output.expanduser().resolve()
 args.codex = args.codex.expanduser().resolve()
+profile = get_profile(args.profile)
+args.grasp_bank = profile.grasp_bank(args.ptrack_root)
+args.task = profile.task
 for required in (args.ptrack_root, args.grasp_bank, args.codex):
     if not required.exists():
         parser.error(f"Required path does not exist: {required}")
 if args.max_decisions < 1:
     parser.error("--max-decisions must be positive")
-if not math.isfinite(args.target_speed) or args.target_speed <= 0.0:
-    parser.error("--target-speed must be positive and finite")
-if not math.isfinite(args.success_tolerance) or args.success_tolerance <= 0.0:
-    parser.error("--success-tolerance must be positive and finite")
-if args.warmup_steps < 0:
-    parser.error("--warmup-steps must be non-negative")
 if args.output.exists():
     parser.error(f"Output already exists: {args.output}")
 
@@ -98,8 +88,8 @@ def ptrack_provenance() -> dict:
         "root": str(args.ptrack_root),
         "commit": commit,
         "dirty": dirty,
-        "grasp_bank": str(args.grasp_bank),
-        "target_speed_rad_s": args.target_speed,
+        "profile_name": args.profile,
+        "profile": profile.record(args.ptrack_root),
     }
 
 
@@ -111,17 +101,27 @@ def make_env():
     cfg.observations.policy.enable_corruption = False
     cfg.observations.critic.enable_corruption = False
     cfg.commands.rotation.grasp_bank_path = str(args.grasp_bank)
-    cfg.commands.rotation.grasp_bank_probability = 1.0
-    cfg.commands.rotation.grasp_sampling_mode = "state"
+    cfg.commands.rotation.grasp_bank_probability = profile.grasp_bank_probability
+    cfg.commands.rotation.grasp_sampling_mode = profile.grasp_sampling
     if hasattr(cfg.commands.rotation, "angular_speed"):
-        cfg.commands.rotation.angular_speed = args.target_speed
+        cfg.commands.rotation.angular_speed = profile.target_speed
     elif hasattr(cfg.commands.rotation, "speed_stages"):
-        cfg.commands.rotation.speed_stages = (args.target_speed,)
+        cfg.commands.rotation.speed_stages = (profile.target_speed,)
         cfg.commands.rotation.min_speed_ratio = 1.0
     else:
         raise ValueError(
             "DexHand Astra direct control requires a continuous rotation task"
         )
+    position = profile.wrist_position_range
+    rotation = profile.wrist_rotation_range
+    cfg.events.reset_hand_root.params["pose_range"] = {
+        "x": (-position, position),
+        "y": (-position, position),
+        "z": (-position, position),
+        "roll": (-rotation, rotation),
+        "pitch": (-rotation, rotation),
+        "yaw": (-rotation, rotation),
+    }
     for view in CAMERA_VIEWS:
         eye = np.asarray(view["eye"], dtype=np.float32)
         target = np.asarray(view["target"], dtype=np.float32)
@@ -165,8 +165,8 @@ def main() -> None:
             task=args.task,
             seed=args.seed,
             max_decisions=args.max_decisions,
-            success_tolerance=args.success_tolerance,
-            warmup_steps=args.warmup_steps,
+            success_tolerance=profile.success_tolerance,
+            warmup_steps=profile.warmup_steps,
             provenance=ptrack_provenance(),
         )
         if args.preflight_only:

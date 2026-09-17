@@ -30,7 +30,7 @@ from .protocol import tool_specs
 
 
 SKILL_ROOT = Path(__file__).parent / "dexhand-astra-rollout"
-CONTROLLER_VERSION = "dexhand_direct_smoke_v1"
+CONTROLLER_VERSION = "dexhand_direct_profile_v2"
 NATIVE_WORK_ITEMS = frozenset(
     (
         "commandExecution",

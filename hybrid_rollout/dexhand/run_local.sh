@@ -12,18 +12,14 @@ ROLLOUT_SHARED_ROOT="${ROLLOUT_SHARED_ROOT:-$ASTRA_ASSESS_ROOT/.runtime/robodojo
 ROLLOUT_AUTH_PROFILE="${ROLLOUT_AUTH_PROFILE:-codex_a}"
 ROLLOUT_CODEX_HOME_DIR="${ROLLOUT_CODEX_HOME_DIR:-$ROLLOUT_SHARED_ROOT/private/auth_profiles/$ROLLOUT_AUTH_PROFILE/codex_home}"
 RESULTS_ROOT="${RESULTS_ROOT:-$ROLLOUT_SHARED_ROOT/results/dexhand}"
-RUN_ID="${RUN_ID:-cylinder_a_seed42_smoke}"
-TASK="${TASK:-Isaac-Sharpa-Benchmark-Cylinder-Rotation-A-Axis-v0}"
+PROFILE="${PROFILE:?Set PROFILE to an explicit DexHand evaluation profile}"
+RUN_ID="${RUN_ID:?Set RUN_ID to a unique result identifier}"
 SEED="${SEED:-42}"
 MAX_DECISIONS="${MAX_DECISIONS:-3}"
-TARGET_SPEED="${TARGET_SPEED:-0.5}"
-SUCCESS_TOLERANCE="${SUCCESS_TOLERANCE:-0.1}"
-WARMUP_STEPS="${WARMUP_STEPS:-20}"
 PREFLIGHT_ONLY="${PREFLIGHT_ONLY:-0}"
-GRASP_BANK="${GRASP_BANK:-$PTRACK_ROOT/outputs/sharpa_dynamic/cylinder_recoverable_grasps_train80_v1.pt}"
 OUTPUT="$RESULTS_ROOT/$RUN_ID/controller"
 
-for path in "$PTRACK_ROOT" "$ISAACLAB_PYTHON" "$CODEX_BIN" "$ISAACSIM_SETUP" "$GRASP_BANK"; do
+for path in "$PTRACK_ROOT" "$ISAACLAB_PYTHON" "$CODEX_BIN" "$ISAACSIM_SETUP"; do
     [[ -e "$path" ]] || { echo "Missing required path: $path" >&2; exit 2; }
 done
 if [[ "$PREFLIGHT_ONLY" != 1 ]]; then
@@ -49,15 +45,11 @@ export PYTHONPATH="$CODE_ROOT:$PTRACK_ROOT:$PTRACK_ROOT/source/ConTrack${PYTHONP
 
 ARGS=(
     --ptrack-root "$PTRACK_ROOT"
-    --grasp-bank "$GRASP_BANK"
     --output "$OUTPUT"
     --codex "$CODEX_BIN"
-    --task "$TASK"
+    --profile "$PROFILE"
     --seed "$SEED"
     --max-decisions "$MAX_DECISIONS"
-    --target-speed "$TARGET_SPEED"
-    --success-tolerance "$SUCCESS_TOLERANCE"
-    --warmup-steps "$WARMUP_STEPS"
     --device cuda:0
     --headless
     --enable_cameras
