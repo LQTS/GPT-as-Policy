@@ -385,7 +385,13 @@ def main(env_cfg, agent_cfg: RslRlBaseRunnerCfg) -> None:
             print(f"SKIP_EXISTING {result_path}", flush=True)
             continue
         if output.exists():
-            raise FileExistsError(f"Case video output already exists: {output}")
+            try:
+                output.rmdir()
+            except OSError as error:
+                raise FileExistsError(
+                    f"Incomplete output is not empty; refusing to overwrite: {output}"
+                ) from error
+            print(f"REMOVE_EMPTY_INCOMPLETE {output}", flush=True)
         output.mkdir(parents=True)
 
         env.reset()
